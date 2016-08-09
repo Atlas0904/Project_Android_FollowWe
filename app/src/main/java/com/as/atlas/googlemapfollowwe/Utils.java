@@ -1,5 +1,8 @@
 package com.as.atlas.googlemapfollowwe;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.util.Log;
 
 import org.json.JSONException;
@@ -9,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -19,6 +23,7 @@ import java.net.URLEncoder;
  */
 public class Utils {
 
+    private static final String TAG = Utils.class.getName();
     private static final String ENCODE_UTF8 = "utf-8";
     private static final String PREFIX_GOOGLE_MAP_API_FOR_ADDRESS = "http://maps.google.com.tw/maps/api/geocode/json?address=";
     private static final String RESPONSE_STATUS = "status";
@@ -88,5 +93,39 @@ public class Utils {
         }
 
         return null;
+    }
+
+    public static Bitmap getBitmapFromURL(String src) {
+        try {
+            Log.d(TAG, "getBitmapFromURL done.");
+            URL url = new URL(src);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setDoInput(true);
+            connection.connect();
+            InputStream input = connection.getInputStream();
+            Bitmap myBitmap = BitmapFactory.decodeStream(input);
+            Log.d(TAG, "getBitmapFromURL done.");
+            return myBitmap;
+        } catch (IOException e) {
+            // Log exception
+            Log.d(TAG, "getBitmapFromURL exception e:" + e);
+            return null;
+        }
+    }
+
+    public static Bitmap scaleBitmap(Bitmap bitmap, float newWidth, float newHeight) {
+        if (bitmap == null)  return  null;
+
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+
+        // create a matrix for the manipulation
+        Matrix matrix = new Matrix();
+
+        // resize the bit map
+        matrix.postScale(newWidth/ width, newHeight/ height);
+
+        // recreate the new Bitmap and set it back
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
     }
 }

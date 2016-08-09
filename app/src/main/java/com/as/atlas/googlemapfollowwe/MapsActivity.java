@@ -1,19 +1,17 @@
 package com.as.atlas.googlemapfollowwe;
 
 import android.Manifest;
-import android.app.Activity;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.location.Location;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v7.app.ActionBar;
-import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
@@ -44,29 +42,34 @@ import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
 
 import com.firebase.client.Firebase;
 
+import java.lang.ref.WeakReference;
 import java.util.HashMap;
 
 import static android.widget.Toast.LENGTH_LONG;
 
 public class MapsActivity extends AppCompatActivity
-        implements OnMapReadyCallback,
+        implements FetchUserBitmapTask.FetchUserBitmapResponse,
+//        OnMapReadyCallback,
         GoogleApiClient.ConnectionCallbacks,
-        GoogleApiClient.OnConnectionFailedListener, LocationListener {
+        GoogleApiClient.OnConnectionFailedListener,
+        LocationListener {
 
     private static final String TAG = "Atlas";
     private static boolean bLocationChanged = false;
 
     public static final int PLACE_AUTOCOMPLETE_REQUEST_CODE = 1;
-
     public final String URL_FIREBASE_DEMO = "https://followwe-7f0e8.firebaseio.com/";
 
-    private Button buttonSearch;
+
+    private static final int LETTER_ON_ICON = 1;
+    private static final int ICON_SIZE = 128;
+
+    private Button buttonShow;
 
     private GoogleMap mMap;
     private GoogleApiClient googleApiClient;
@@ -96,7 +99,7 @@ public class MapsActivity extends AppCompatActivity
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
 
-        buttonSearch = (Button) findViewById(R.id.buttonSearch);
+        buttonShow = (Button) findViewById(R.id.buttonShow);
 
         mapFragment.getMapAsync(new OnMapReadyCallback() {
             @Override
@@ -125,10 +128,11 @@ public class MapsActivity extends AppCompatActivity
             }
         });
 
-        buttonSearch.setOnClickListener(new View.OnClickListener() {
+        buttonShow.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                showSuggestionPlace();
+//                showSuggestionPlace();
+
             }
         });
 
@@ -179,8 +183,6 @@ public class MapsActivity extends AppCompatActivity
         firebase.push().setValue(atlas);    // 如果本身就是 class, 就不要再用  child("Person")
         firebase.push().setValue(sandy);
         firebase.push().setValue(warhol);
-
-
     }
 
     private void listenDataBaseChange() {
@@ -218,11 +220,12 @@ public class MapsActivity extends AppCompatActivity
     }
 
     private void showOnlineUserOnMap(String name, double lat, double lng) {
-        // 建立位置的座標物件
-        LatLng place = new LatLng(lat, lng);
-        // 移動地圖
-        //moveMap(place);
-        addMarker(place, "Name: " + name, "lat: " + lat + " lng" + lng);
+        // Ref: http://chart.apis.google.com/chart?chst=d_map_pin_letter&chld=A|FF0000|000000  // Will show A on above example
+        // Choose first 2 chars of name as icon
+
+        LatLng latLng = new LatLng(lat, lng);
+        String url = "http://chart.apis.google.com/chart?chst=d_map_pin_letter&chld=" + name.substring(0, LETTER_ON_ICON) + "|FF0000|000000";
+        (new FetchUserBitmapTask(latLng, name, latLng.toString(), this)).execute(url);
     }
 
     public void showSuggestionPlace() {  // On button click do this
@@ -264,27 +267,27 @@ public class MapsActivity extends AppCompatActivity
      * it inside the SupportMapFragment. This method will only be triggered once the user has
      * installed Google Play services and returned to the app.
      */
-    @Override
-    public void onMapReady(GoogleMap googleMap) {
-        Log.d("Atlas", "onMapReady googleMap:" + googleMap);
-        mMap = googleMap;
-
-        // Add a marker in Sydney and move the camera
-        // Atlas comment Google source code
-        /*
-        LatLng sydney = new LatLng(-34, 151);
-        mMap.addMarker(new MarkerOptions().position(sydney).title("Marker in Sydney"));
-        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
-        */
-
-
-        // 建立位置的座標物件
-        LatLng place = new LatLng(25.033408, 121.564099);
-        // 移動地圖
-        moveMap(place);
-        addMarker(place, "Hello!", " Google Maps v2!");
-
-    }
+//    @Override
+//    public void onMapReady(GoogleMap googleMap) {
+//        Log.d("Atlas", "onMapReady googleMap:" + googleMap);
+//        mMap = googleMap;
+//
+//        // Add a marker in Sydney and move the camera
+//        // Atlas comment Google source code
+//        /*
+//        LatLng sydney = new LatLng(-34, 151);
+//        mMap.addMarker(new MarkerOptions().position(sydney).title("Marker in Sydney"));
+//        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
+//        */
+//
+//
+//        // 建立位置的座標物件
+//        LatLng place = new LatLng(25.033408, 121.564099);
+//        // 移動地圖
+//        moveMap(place);
+//        addMarker(place, "Hello!", " Google Maps v2!", null);
+//
+//    }
 
     // 移動地圖到參數指定的位置
     private void moveMap(LatLng place) {
@@ -300,10 +303,12 @@ public class MapsActivity extends AppCompatActivity
     }
 
     // 在地圖加入指定位置與標題的標記
-    private void addMarker(LatLng place, String title, String snippet) {
-        BitmapDescriptor icon =
-                BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
+    private void addMarker(LatLng place, String title, String snippet, Bitmap bitmap) {
+//        BitmapDescriptor icon =
+//                BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
 
+
+            BitmapDescriptor icon = (bitmap!= null) ? BitmapDescriptorFactory.fromBitmap(bitmap) : BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
         log("title: " + title + " snippet:" + snippet);
 
         MarkerOptions markerOptions = new MarkerOptions();
@@ -313,8 +318,13 @@ public class MapsActivity extends AppCompatActivity
                 .icon(icon);
 
         googleMap.addMarker(markerOptions);
-
     }
+
+    private void moveCamera(LatLng latLng, int scale) {
+        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, scale));
+    }
+
+
 
     private void configGoogleApiClient() {
         log("configGoogleApiClient");
@@ -470,5 +480,12 @@ public class MapsActivity extends AppCompatActivity
 
     private void log(String s) {
         Log.d(TAG, s);
+    }
+
+    @Override
+    public void responseWithFetchUserBitmapResult(LatLng latLng, String title, String snippet, Bitmap bitmap) {
+        Bitmap scaledBitmap = Utils.scaleBitmap(bitmap, ICON_SIZE, ICON_SIZE);
+        addMarker(latLng, title, snippet, scaledBitmap);
+        moveCamera(latLng, 16);
     }
 }
