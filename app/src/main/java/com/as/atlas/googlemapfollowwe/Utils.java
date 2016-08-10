@@ -128,4 +128,5 @@ public class Utils {
         // recreate the new Bitmap and set it back
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
     }
+
 }

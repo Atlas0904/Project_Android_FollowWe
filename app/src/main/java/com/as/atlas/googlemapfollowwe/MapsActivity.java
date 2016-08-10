@@ -3,7 +3,6 @@ package com.as.atlas.googlemapfollowwe;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.location.Location;
 import android.os.Build;
 import android.os.Handler;
@@ -14,7 +13,6 @@ import android.os.Bundle;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
@@ -52,10 +50,10 @@ import java.util.HashMap;
 import static android.widget.Toast.LENGTH_LONG;
 
 public class MapsActivity extends AppCompatActivity
-        implements FetchUserBitmapTask.FetchUserBitmapResponse,
-//        OnMapReadyCallback,
+        implements
         GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener,
+        OnMapReadyCallback,
         LocationListener {
 
     private static final String TAG = "Atlas";
@@ -65,12 +63,8 @@ public class MapsActivity extends AppCompatActivity
     public final String URL_FIREBASE = "https://followwe-7f0e8.firebaseio.com/";
 
 
-    private static final int LETTER_ON_ICON = 1;
-    private static final int ICON_SIZE = 128;
 
     private Button buttonShow;
-
-    private GoogleMap mMap;
     private GoogleApiClient googleApiClient;
 
     // Location請求物件
@@ -90,7 +84,10 @@ public class MapsActivity extends AppCompatActivity
 
     //Local variable
     private Handler mHandler;
-
+    private UserPlaceSelectionListener userPlaceSelectionListener;
+    private UserInfoValueEventListener userInfoValueEventListener;
+    private GoogleMapEventHandler googleMapEventHandler;
+    private OnMapReadyCallback onMapReadyCallback;
 
     // Note: rember to add package in Google console
     // https://console.developers.google.com/apis/credentials?project=at-shareyourlocation
@@ -108,13 +105,7 @@ public class MapsActivity extends AppCompatActivity
                 .findFragmentById(R.id.map);
 
         buttonShow = (Button) findViewById(R.id.buttonShow);
-
-        mapFragment.getMapAsync(new OnMapReadyCallback() {
-            @Override
-            public void onMapReady(GoogleMap map) {
-                googleMap = map;
-            }
-        });
+        mapFragment.getMapAsync(this);
 
         configGoogleApiClient();
         configLocationRequest();
@@ -122,27 +113,9 @@ public class MapsActivity extends AppCompatActivity
         PlaceAutocompleteFragment autocompleteFragment = (PlaceAutocompleteFragment)
                 getFragmentManager().findFragmentById(R.id.place_autocomplete_fragment);
 
-        autocompleteFragment.setOnPlaceSelectedListener(new PlaceSelectionListener() {
-            @Override
-            public void onPlaceSelected(Place place) {
-                // TODO: Get info about the selected place.
-                Log.i(TAG, "Place: " + place.getName());//get place details here
-            }
+        userPlaceSelectionListener = new UserPlaceSelectionListener();
+        autocompleteFragment.setOnPlaceSelectedListener(userPlaceSelectionListener);
 
-            @Override
-            public void onError(Status status) {
-                // TODO: Handle the error.
-                Log.i(TAG, "An error occurred: " + status);
-            }
-        });
-
-        buttonShow.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-//                showSuggestionPlace();
-
-            }
-        });
 
         // Firebase section
         Firebase.setAndroidContext(this);
@@ -152,10 +125,7 @@ public class MapsActivity extends AppCompatActivity
         String userid = "0904";
         mFirebaseOnline = new Firebase(URL_FIREBASE).child(".info/connected");
         mFirebaseUser =  new Firebase(URL_FIREBASE).child("presence").child(userid);
-
         log("mFirebaseOnline: "+ mFirebaseOnline + " mFirebaseUser:" + mFirebaseUser);
-
-
 
 
         mFirebaseUserInfo.addChildEventListener(new ChildEventListener() {
@@ -187,9 +157,17 @@ public class MapsActivity extends AppCompatActivity
             @Override
             public void onCancelled(FirebaseError firebaseError) {}
         });
-        setPeople();
-        listenDataBaseChange();
 
+        setPeople();
+    }
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {  // Note: init may wait for google map ready
+        Log.d(TAG, "onMapReady: map=" + googleMap);
+        this.googleMap = googleMap;
+        googleMapEventHandler = new GoogleMapEventHandler(googleMap);
+        userInfoValueEventListener = new UserInfoValueEventListener(googleMapEventHandler);
+        mFirebaseUserInfo.addValueEventListener(userInfoValueEventListener);
     }
 
 
@@ -203,68 +181,9 @@ public class MapsActivity extends AppCompatActivity
         mFirebaseUserInfo.push().setValue(warhol);
     }
 
-    private void listenDataBaseChange() {
-        mFirebaseUserInfo.addValueEventListener(new ValueEventListener() {
-            @Override
-            public void onDataChange(DataSnapshot snapshot) {
-
-                for (DataSnapshot childPerson: snapshot.getChildren()) {
-                    String name = (String) childPerson.child("name").getValue();
-                    double lat = (double) childPerson.child("lat").getValue();
-                    double lng = (double) childPerson.child("lng").getValue();
-
-                    log("1st method Person name:"+ name + " lat:" + lat + " lng:" +lng);
-                    showOnlineUserOnMap(name, lat, lng);
-                }
-
-                for (DataSnapshot childPerson: snapshot.getChildren()) {
-                    User p =childPerson.getValue(User.class);
-
-                    log("2nd method Person: " + p);
-                }
-
-                HashMap<String, User> map = null;
-                for (DataSnapshot child : snapshot.getChildren()) {
-                    map = (HashMap<String, User>) child.getValue();
-                    log("list:" + map);
-                }
-            }
-
-            @Override
-            public void onCancelled(FirebaseError firebaseError) {
-                log("The read failed: " + firebaseError.getMessage());
-            }
-        });
-    }
-
-    private void showOnlineUserOnMap(String name, double lat, double lng) {
-        // Ref: http://chart.apis.google.com/chart?chst=d_map_pin_letter&chld=A|FF0000|000000  // Will show A on above example
-        // Choose first 2 chars of name as icon
-
-        LatLng latLng = new LatLng(lat, lng);
-        String url = "http://chart.apis.google.com/chart?chst=d_map_pin_letter&chld=" + name.substring(0, LETTER_ON_ICON) + "|FF0000|000000";
-        (new FetchUserBitmapTask(latLng, name, latLng.toString(), this)).execute(url);
-    }
-
-    public void showSuggestionPlace() {  // On button click do this
-        try {
-            Intent intent =
-                    new PlaceAutocomplete.IntentBuilder(PlaceAutocomplete.MODE_FULLSCREEN)
-                            .build(this);
-            startActivityForResult(intent, PLACE_AUTOCOMPLETE_REQUEST_CODE);
-        } catch (GooglePlayServicesRepairableException e) {
-            log("GooglePlayServicesRepairableException");
-            // TODO: Handle the error.
-        } catch (GooglePlayServicesNotAvailableException e) {
-            // TODO: Handle the error.
-            log("GooglePlayServicesNotAvailableException");
-        }
-    }
-
     @Override
     protected void onStart() {
         super.onStart();
-        enableLocationUpdate();
 
         // Firebase chatroom section
         // Finally, a little indication of connection status
@@ -273,11 +192,6 @@ public class MapsActivity extends AppCompatActivity
             public void onDataChange(DataSnapshot dataSnapshot) {
                 boolean connected = (Boolean) dataSnapshot.getValue();
                 log("mOnlineChangeListener: connected" + connected);
-//                if (connected) {
-//                    mFirebaseUser.setValue(true);
-//                } else {
-//                    mFirebaseUser.setValue(false);
-//                }
                 if (connected) {
                     mFirebaseUser.onDisconnect().removeValue();
                     mFirebaseUser.setValue(true);
@@ -297,46 +211,6 @@ public class MapsActivity extends AppCompatActivity
         super.onStop();
         //disableLocationUpdate();
     }
-
-    private void enableLocationUpdate() {
-    }
-
-
-    // 移動地圖到參數指定的位置
-    private void moveMap(LatLng place) {
-        // 建立地圖攝影機的位置物件
-        CameraPosition cameraPosition =
-                new CameraPosition.Builder()
-                        .target(place)
-                        .zoom(17)
-                        .build();
-
-        // 使用動畫的效果移動地圖
-        mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
-    }
-
-    // 在地圖加入指定位置與標題的標記
-    private void addMarker(LatLng place, String title, String snippet, Bitmap bitmap) {
-//        BitmapDescriptor icon =
-//                BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
-
-        BitmapDescriptor icon = (bitmap!= null) ? BitmapDescriptorFactory.fromBitmap(bitmap) : BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
-        log("title: " + title + " snippet:" + snippet);
-
-        MarkerOptions markerOptions = new MarkerOptions();
-        markerOptions.position(place)
-                .title(title.toString())
-                .snippet(snippet.toString())
-                .icon(icon);
-
-        googleMap.addMarker(markerOptions);
-    }
-
-    private void moveCamera(LatLng latLng, int scale) {
-        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, scale));
-    }
-
-
 
     private void configGoogleApiClient() {
         log("configGoogleApiClient");
@@ -448,13 +322,7 @@ public class MapsActivity extends AppCompatActivity
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
         log("onConnectionFailed connectionResult: " + connectionResult);
 
-        // Google Services連線失敗
-        // ConnectionResult參數是連線失敗的資訊
-
-        // ConnectionResult參數是連線失敗的資訊
         int errorCode = connectionResult.getErrorCode();
-
-        // 裝置沒有安裝Google Play服務
         if (errorCode == ConnectionResult.SERVICE_MISSING) {
             Toast.makeText(this, R.string.google_play_service_missing,
                     LENGTH_LONG).show();
@@ -494,10 +362,4 @@ public class MapsActivity extends AppCompatActivity
         Log.d(TAG, s);
     }
 
-    @Override
-    public void responseWithFetchUserBitmapResult(LatLng latLng, String title, String snippet, Bitmap bitmap) {
-        Bitmap scaledBitmap = Utils.scaleBitmap(bitmap, ICON_SIZE, ICON_SIZE);
-        addMarker(latLng, title, snippet, scaledBitmap);
-        moveCamera(latLng, 16);
-    }
 }
