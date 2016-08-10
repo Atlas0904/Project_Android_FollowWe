@@ -5,8 +5,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.location.Location;
-import android.os.AsyncTask;
 import android.os.Build;
+import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
@@ -47,7 +47,6 @@ import com.google.android.gms.maps.model.MarkerOptions;
 
 import com.firebase.client.Firebase;
 
-import java.lang.ref.WeakReference;
 import java.util.HashMap;
 
 import static android.widget.Toast.LENGTH_LONG;
@@ -63,7 +62,7 @@ public class MapsActivity extends AppCompatActivity
     private static boolean bLocationChanged = false;
 
     public static final int PLACE_AUTOCOMPLETE_REQUEST_CODE = 1;
-    public final String URL_FIREBASE_DEMO = "https://followwe-7f0e8.firebaseio.com/";
+    public final String URL_FIREBASE = "https://followwe-7f0e8.firebaseio.com/";
 
 
     private static final int LETTER_ON_ICON = 1;
@@ -81,7 +80,16 @@ public class MapsActivity extends AppCompatActivity
 
 
     // Firebase section
-    private Firebase firebase;
+    private Firebase mFirebaseUserInfo;
+    // Firebase chat room section
+    private Firebase mFirebaseOnline;
+    private Firebase mFirebaseUser;
+
+    private ValueEventListener mOnlineChangeListener;
+    private ValueEventListener mUserChangeListener;
+
+    //Local variable
+    private Handler mHandler;
 
 
     // Note: rember to add package in Google console
@@ -138,10 +146,19 @@ public class MapsActivity extends AppCompatActivity
 
         // Firebase section
         Firebase.setAndroidContext(this);
-        firebase = new Firebase(URL_FIREBASE_DEMO);
+        mFirebaseUserInfo = new Firebase(URL_FIREBASE).child("userinfo");
+
+        // Firebase chat room section
+        String userid = "0904";
+        mFirebaseOnline = new Firebase(URL_FIREBASE).child(".info/connected");
+        mFirebaseUser =  new Firebase(URL_FIREBASE).child("presence").child(userid);
+
+        log("mFirebaseOnline: "+ mFirebaseOnline + " mFirebaseUser:" + mFirebaseUser);
 
 
-        firebase.addChildEventListener(new ChildEventListener() {
+
+
+        mFirebaseUserInfo.addChildEventListener(new ChildEventListener() {
             @Override
             public void onChildAdded(DataSnapshot dataSnapshot, String s) {
                 Log.d(TAG, "onChildAdded()");
@@ -175,18 +192,19 @@ public class MapsActivity extends AppCompatActivity
 
     }
 
+
     private void setPeople() {
         User atlas = new User("Atlas", 25.033408, 121.564099);
         User sandy = new User("Sandy", 25.043408, 121.564099);
         User warhol = new User("Warhol", 25.043408, 121.574099);
 
-        firebase.push().setValue(atlas);    // 如果本身就是 class, 就不要再用  child("Person")
-        firebase.push().setValue(sandy);
-        firebase.push().setValue(warhol);
+        mFirebaseUserInfo.push().setValue(atlas);    // 如果本身就是 class, 就不要再用  child("Person")
+        mFirebaseUserInfo.push().setValue(sandy);
+        mFirebaseUserInfo.push().setValue(warhol);
     }
 
     private void listenDataBaseChange() {
-        firebase.addValueEventListener(new ValueEventListener() {
+        mFirebaseUserInfo.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
 
@@ -247,6 +265,31 @@ public class MapsActivity extends AppCompatActivity
     protected void onStart() {
         super.onStart();
         enableLocationUpdate();
+
+        // Firebase chatroom section
+        // Finally, a little indication of connection status
+        mOnlineChangeListener = mFirebaseOnline.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                boolean connected = (Boolean) dataSnapshot.getValue();
+                log("mOnlineChangeListener: connected" + connected);
+//                if (connected) {
+//                    mFirebaseUser.setValue(true);
+//                } else {
+//                    mFirebaseUser.setValue(false);
+//                }
+                if (connected) {
+                    mFirebaseUser.onDisconnect().removeValue();
+                    mFirebaseUser.setValue(true);
+                }
+            }
+
+            @Override
+            public void onCancelled(FirebaseError firebaseError) {
+                // No-op
+            }
+        });
+
     }
 
     @Override
@@ -258,36 +301,6 @@ public class MapsActivity extends AppCompatActivity
     private void enableLocationUpdate() {
     }
 
-    /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-     * we just add a marker near Sydney, Australia.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
-     */
-//    @Override
-//    public void onMapReady(GoogleMap googleMap) {
-//        Log.d("Atlas", "onMapReady googleMap:" + googleMap);
-//        mMap = googleMap;
-//
-//        // Add a marker in Sydney and move the camera
-//        // Atlas comment Google source code
-//        /*
-//        LatLng sydney = new LatLng(-34, 151);
-//        mMap.addMarker(new MarkerOptions().position(sydney).title("Marker in Sydney"));
-//        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
-//        */
-//
-//
-//        // 建立位置的座標物件
-//        LatLng place = new LatLng(25.033408, 121.564099);
-//        // 移動地圖
-//        moveMap(place);
-//        addMarker(place, "Hello!", " Google Maps v2!", null);
-//
-//    }
 
     // 移動地圖到參數指定的位置
     private void moveMap(LatLng place) {
@@ -306,8 +319,8 @@ public class MapsActivity extends AppCompatActivity
     private void addMarker(LatLng place, String title, String snippet, Bitmap bitmap) {
 //        BitmapDescriptor icon =
 //                BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
-        
-            BitmapDescriptor icon = (bitmap!= null) ? BitmapDescriptorFactory.fromBitmap(bitmap) : BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
+
+        BitmapDescriptor icon = (bitmap!= null) ? BitmapDescriptorFactory.fromBitmap(bitmap) : BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
         log("title: " + title + " snippet:" + snippet);
 
         MarkerOptions markerOptions = new MarkerOptions();
