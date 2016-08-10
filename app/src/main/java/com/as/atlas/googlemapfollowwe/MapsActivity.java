@@ -306,8 +306,7 @@ public class MapsActivity extends AppCompatActivity
     private void addMarker(LatLng place, String title, String snippet, Bitmap bitmap) {
 //        BitmapDescriptor icon =
 //                BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
-
-
+        
             BitmapDescriptor icon = (bitmap!= null) ? BitmapDescriptorFactory.fromBitmap(bitmap) : BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
         log("title: " + title + " snippet:" + snippet);
 
