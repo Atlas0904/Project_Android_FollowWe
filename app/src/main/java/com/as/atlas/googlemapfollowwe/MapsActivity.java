@@ -25,11 +25,14 @@ import com.firebase.client.FirebaseError;
 import com.firebase.client.ValueEventListener;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.places.Place;
+import com.google.android.gms.location.places.PlaceBuffer;
+import com.google.android.gms.location.places.Places;
 import com.google.android.gms.location.places.ui.PlaceAutocomplete;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -198,6 +201,8 @@ public class MapsActivity extends AppCompatActivity
             return;
         }
         googleMap.setMyLocationEnabled(true);
+
+
     }
 
 
@@ -249,6 +254,10 @@ public class MapsActivity extends AppCompatActivity
                 addConnectionCallbacks(this).
                 addOnConnectionFailedListener(this).
                 addApi(LocationServices.API).
+                // For place Id
+                addApi(Places.GEO_DATA_API).
+                addApi(Places.PLACE_DETECTION_API).
+                enableAutoManage(this, this).
                 build();
         googleApiClient.connect();
     }
@@ -393,17 +402,42 @@ public class MapsActivity extends AppCompatActivity
     }
 
     @Override
-    public void onMapClick(LatLng latLng) {
+    public void onMapClick(final LatLng latLng) {
         Log.d(TAG, "onMapClick latLng:" + latLng);
         IndoorBuilding building = googleMap.getFocusedBuilding();  // null?
         Log.d(TAG, "building: " + building);
 
         Geocoder geocoder = new Geocoder(this, Locale.getDefault());
         try {
-            Log.d(TAG, "Address:" + geocoder.getFromLocation(25.033408, 121.564099, 1).toString());
+            Log.d(TAG, "Address:" + geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1).toString());
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String placeId = Utils.getPlaceIdFromGoogleMapAPI(latLng, 500, "restaurant", "cruise");
+                if ("".equals(placeId)) {
+                    return;
+                }
+                Places.GeoDataApi.getPlaceById(googleApiClient, String.valueOf(placeId))
+                        .setResultCallback(new ResultCallback<PlaceBuffer>() {
+                            @Override
+                            public void onResult(PlaceBuffer places) {
+                                if (places.getStatus().isSuccess() && places.getCount() > 0) {
+                                    final Place myPlace = places.get(0);
+                                    Log.i(TAG, "Place found: " + myPlace.getName());
+                                } else {
+                                    Log.e(TAG, "Place not found");
+                                }
+                                places.release();
+                            }
+                        });
+            }
+        }).start();
+
+
 
     }
 }
