@@ -40,11 +40,9 @@ public class GoogleMapEventHandler extends Handler implements FetchUserBitmapTas
     }
 
     // 在地圖加入指定位置與標題的標記
-    private void addMarker(LatLng place, String title, String snippet, Bitmap bitmap) {
-//        BitmapDescriptor icon =
-//                BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
+    public void addMarker(LatLng place, String title, String snippet, Bitmap bitmap) {
 
-        BitmapDescriptor icon = (bitmap!= null) ? BitmapDescriptorFactory.fromBitmap(bitmap) : BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
+        BitmapDescriptor icon = getMarkedIcon(bitmap);
         Log.d(TAG,"title: " + title + " snippet:" + snippet);
 
         MarkerOptions markerOptions = new MarkerOptions();
@@ -56,7 +54,12 @@ public class GoogleMapEventHandler extends Handler implements FetchUserBitmapTas
         googleMap.addMarker(markerOptions);
     }
 
-    private void moveCamera(LatLng latLng, int scale) {
+    private BitmapDescriptor getMarkedIcon(Bitmap bitmap) {
+        BitmapDescriptor icon = (bitmap!= null) ? BitmapDescriptorFactory.fromBitmap(bitmap) : BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher);
+        return icon;
+    }
+
+    public void moveCamera(LatLng latLng, int scale) {
 
         CameraPosition cameraPosition =
                 new CameraPosition.Builder()

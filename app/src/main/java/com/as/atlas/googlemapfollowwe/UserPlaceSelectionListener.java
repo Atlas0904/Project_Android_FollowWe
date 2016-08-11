@@ -18,6 +18,7 @@ public class UserPlaceSelectionListener implements PlaceSelectionListener {
         // TODO: Get info about the selected place.
         Log.i(TAG, "Place: " + place.getName());//get place details here
         suggestedPlace = (String) place.getName();
+        Utils.getLatLngFromGoogleMapAPI(suggestedPlace);
     }
 
     @Override

@@ -48,5 +48,15 @@
         android:layout_alignEnd="@+id/buttonShow"
         xmlns:android="http://schemas.android.com/apk/res/android" />
 
+    <CheckBox
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Sync"
+        android:id="@+id/checkBoxSyncPlace"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentStart="true"
+        android:checked="false" />
+
 
 </RelativeLayout>

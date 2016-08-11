@@ -3,6 +3,7 @@ package com.as.atlas.googlemapfollowwe;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Geocoder;
 import android.location.Location;
 import android.os.Build;
 import android.os.Handler;
@@ -13,7 +14,9 @@ import android.os.Bundle;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.Toast;
 
 import com.firebase.client.ChildEventListener;
@@ -21,8 +24,6 @@ import com.firebase.client.DataSnapshot;
 import com.firebase.client.FirebaseError;
 import com.firebase.client.ValueEventListener;
 import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
-import com.google.android.gms.common.GooglePlayServicesRepairableException;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.LocationListener;
@@ -31,40 +32,40 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlaceAutocomplete;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
-import com.google.android.gms.location.places.ui.PlaceSelectionListener;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
-import com.google.android.gms.maps.model.CameraPosition;
+import com.google.android.gms.maps.model.IndoorBuilding;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 
 
 import com.firebase.client.Firebase;
 
-import java.util.HashMap;
+import java.io.IOException;
+import java.util.Locale;
 
 import static android.widget.Toast.LENGTH_LONG;
 
 public class MapsActivity extends AppCompatActivity
         implements
+        GoogleMap.OnMapClickListener,
         GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener,
         OnMapReadyCallback,
         LocationListener {
 
-    private static final String TAG = "Atlas";
-    private static boolean bLocationChanged = false;
+    private static final String TAG = MapsActivity.class.getSimpleName();
+    private static boolean mLockedOnUserView = false;
 
     public static final int PLACE_AUTOCOMPLETE_REQUEST_CODE = 1;
     public final String URL_FIREBASE = "https://followwe-7f0e8.firebaseio.com/";
 
 
-
     private Button buttonShow;
+    private CheckBox checkBox;
     private GoogleApiClient googleApiClient;
 
     // Location請求物件
@@ -104,8 +105,18 @@ public class MapsActivity extends AppCompatActivity
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
 
-        buttonShow = (Button) findViewById(R.id.buttonShow);
         mapFragment.getMapAsync(this);
+
+        checkBox = (CheckBox) findViewById(R.id.checkBoxSyncPlace);
+        checkBox.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mLockedOnUserView = ((CheckBox) v).isChecked();
+            }
+        });
+
+        buttonShow = (Button) findViewById(R.id.buttonShow);
+
 
         configGoogleApiClient();
         configLocationRequest();
@@ -124,8 +135,8 @@ public class MapsActivity extends AppCompatActivity
         // Firebase chat room section
         String userid = "0904";
         mFirebaseOnline = new Firebase(URL_FIREBASE).child(".info/connected");
-        mFirebaseUser =  new Firebase(URL_FIREBASE).child("presence").child(userid);
-        log("mFirebaseOnline: "+ mFirebaseOnline + " mFirebaseUser:" + mFirebaseUser);
+        mFirebaseUser = new Firebase(URL_FIREBASE).child("presence").child(userid);
+        log("mFirebaseOnline: " + mFirebaseOnline + " mFirebaseUser:" + mFirebaseUser);
 
 
         mFirebaseUserInfo.addChildEventListener(new ChildEventListener() {
@@ -140,23 +151,29 @@ public class MapsActivity extends AppCompatActivity
 
                 int i = 0;
                 for (DataSnapshot child : dataSnapshot.getChildren()) {
-                    if (child.getValue() != null)  Log.d(TAG, "child index:" + (i++) + " " + String.valueOf(child.getValue()));
+                    if (child.getValue() != null)
+                        Log.d(TAG, "child index:" + (i++) + " " + String.valueOf(child.getValue()));
                 }
 
             }
 
             @Override
-            public void onChildChanged(DataSnapshot dataSnapshot, String s) {}
+            public void onChildChanged(DataSnapshot dataSnapshot, String s) {
+            }
 
             @Override
-            public void onChildRemoved(DataSnapshot dataSnapshot) {}
+            public void onChildRemoved(DataSnapshot dataSnapshot) {
+            }
 
             @Override
-            public void onChildMoved(DataSnapshot dataSnapshot, String s) {}
+            public void onChildMoved(DataSnapshot dataSnapshot, String s) {
+            }
 
             @Override
-            public void onCancelled(FirebaseError firebaseError) {}
+            public void onCancelled(FirebaseError firebaseError) {
+            }
         });
+
 
         setPeople();
     }
@@ -168,6 +185,19 @@ public class MapsActivity extends AppCompatActivity
         googleMapEventHandler = new GoogleMapEventHandler(googleMap);
         userInfoValueEventListener = new UserInfoValueEventListener(googleMapEventHandler);
         mFirebaseUserInfo.addValueEventListener(userInfoValueEventListener);
+        googleMap.setOnMapClickListener(this);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            Log.d(TAG, "Permission check for setMyLocationEnable");
+            return;
+        }
+        googleMap.setMyLocationEnabled(true);
     }
 
 
@@ -333,7 +363,7 @@ public class MapsActivity extends AppCompatActivity
     @Override
     public void onLocationChanged(Location location) {
         log("onLocationChanged location: " + location);
-        if (bLocationChanged) {
+        if (mLockedOnUserView) {
             LatLng currentLocation = new LatLng(location.getLatitude(), location.getLongitude());
             googleMap.moveCamera(CameraUpdateFactory.newLatLng(currentLocation));
 
@@ -362,4 +392,18 @@ public class MapsActivity extends AppCompatActivity
         Log.d(TAG, s);
     }
 
+    @Override
+    public void onMapClick(LatLng latLng) {
+        Log.d(TAG, "onMapClick latLng:" + latLng);
+        IndoorBuilding building = googleMap.getFocusedBuilding();  // null?
+        Log.d(TAG, "building: " + building);
+
+        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+        try {
+            Log.d(TAG, "Address:" + geocoder.getFromLocation(25.033408, 121.564099, 1).toString());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
 }
