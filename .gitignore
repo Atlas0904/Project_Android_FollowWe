@@ -1,0 +1,4 @@
+.gradle/2.10/*
+.idea/libraries/*
+.idea/misc.xml
+.idea/workspace.xml
